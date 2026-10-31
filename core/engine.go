@@ -2181,6 +2181,10 @@ func (e *Engine) executeCronShell(p Platform, replyCtx any, job *CronJob) error 
 	}
 }
 
+// cronShellSilentMarker is the exact output a shell cron job prints to skip
+// delivery of an uneventful run.
+const cronShellSilentMarker = "[SILENT]"
+
 func (e *Engine) finishCronShell(p Platform, replyCtx any, cmd *exec.Cmd, mu *sync.Mutex, buf *bytes.Buffer, cmdLabel string, opts ...any) error {
 	mu.Lock()
 	output := buf.String()
@@ -2191,6 +2195,11 @@ func (e *Engine) finishCronShell(p Platform, replyCtx any, cmd *exec.Cmd, mu *sy
 	var finalMsg string
 	if exitOK {
 		result := strings.TrimSpace(output)
+		if result == cronShellSilentMarker {
+			// Monitoring scripts print the marker when there is nothing to report.
+			slog.Debug("cron: shell job reported nothing", "job", cmdLabel)
+			return nil
+		}
 		if result == "" {
 			result = "(no output)"
 		}
