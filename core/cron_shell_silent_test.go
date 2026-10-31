@@ -26,3 +26,40 @@ func TestExecuteCronShell_SilentMarkerSkipsDelivery(t *testing.T) {
 		})
 	}
 }
+
+func TestExecuteCronShell_PlainMarkerSendsOutputVerbatim(t *testing.T) {
+	e := newTestEngine()
+	p := &stubPlatformEngine{n: "stub"}
+	job := &CronJob{ID: "j", Exec: "printf '[PLAIN]\\nline one\\nline two\\n'"}
+	if err := e.executeCronShell(p, "ctx", job); err != nil {
+		t.Fatal(err)
+	}
+	if got := p.getSent(); len(got) != 1 || got[0] != "line one\nline two" {
+		t.Fatalf("sent %q", got)
+	}
+}
+
+func TestExecuteCronShell_SilentJobSendsNoProgress(t *testing.T) {
+	e := newTestEngine()
+	p := &stubPlatformEngine{n: "stub"}
+	silent := true
+	job := &CronJob{ID: "j", Exec: "sleep 1; printf '[PLAIN]\\nalert\\n'", Silent: &silent}
+	if err := e.executeCronShell(p, "ctx", job); err != nil {
+		t.Fatal(err)
+	}
+	if got := p.getSent(); len(got) != 1 || got[0] != "alert" {
+		t.Fatalf("sent %q", got)
+	}
+}
+
+func TestExecuteCronShell_LongJobStillSendsProgress(t *testing.T) {
+	e := newTestEngine()
+	p := &stubPlatformEngine{n: "stub"}
+	job := &CronJob{ID: "j", Exec: "sleep 1; echo done"}
+	if err := e.executeCronShell(p, "ctx", job); err != nil {
+		t.Fatal(err)
+	}
+	if got := p.getSent(); len(got) != 2 {
+		t.Fatalf("sent %q", got)
+	}
+}

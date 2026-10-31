@@ -2113,7 +2113,8 @@ func (e *Engine) executeCronShell(p Platform, replyCtx any, job *CronJob) error 
 	// Long-running command. Try in-place updates.
 	var previewHandle any
 	var useUpdate bool
-	if _, ok := p.(MessageUpdater); ok {
+	silent := job.Silent != nil && *job.Silent
+	if _, ok := p.(MessageUpdater); ok && !silent {
 		if starter, ok := p.(PreviewStarter); ok {
 			mu.Lock()
 			output := buf.String()
@@ -2129,7 +2130,7 @@ func (e *Engine) executeCronShell(p Platform, replyCtx any, job *CronJob) error 
 			}
 		}
 	}
-	if !useUpdate {
+	if !useUpdate && !silent {
 		e.send(p, replyCtx, fmt.Sprintf("⏰ ⏳ `%s`", cmdLabel))
 	}
 
@@ -2185,6 +2186,11 @@ func (e *Engine) executeCronShell(p Platform, replyCtx any, job *CronJob) error 
 // delivery of an uneventful run.
 const cronShellSilentMarker = "[SILENT]"
 
+// cronShellPlainMarker is the first output line of a shell cron job whose
+// remaining output is the message itself: sent verbatim, with no status header
+// and no truncation.
+const cronShellPlainMarker = "[PLAIN]\n"
+
 func (e *Engine) finishCronShell(p Platform, replyCtx any, cmd *exec.Cmd, mu *sync.Mutex, buf *bytes.Buffer, cmdLabel string, opts ...any) error {
 	mu.Lock()
 	output := buf.String()
@@ -2203,7 +2209,11 @@ func (e *Engine) finishCronShell(p Platform, replyCtx any, cmd *exec.Cmd, mu *sy
 		if result == "" {
 			result = "(no output)"
 		}
-		finalMsg = fmt.Sprintf("⏰ ✅ `%s`\n\n%s", cmdLabel, truncateStr(result, 3000))
+		if plain, ok := strings.CutPrefix(result, cronShellPlainMarker); ok {
+			finalMsg = plain
+		} else {
+			finalMsg = fmt.Sprintf("⏰ ✅ `%s`\n\n%s", cmdLabel, truncateStr(result, 3000))
+		}
 	} else {
 		errMsg := output
 		if errMsg != "" {
