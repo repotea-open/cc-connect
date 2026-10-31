@@ -320,6 +320,20 @@ func (s *piSession) readLoopRPC(stdout io.ReadCloser) {
 // In json mode (default): spawns a one-shot `pi --mode json` process.
 // In rpc mode: writes a "prompt" command to the persistent RPC process stdin.
 func (s *piSession) Send(msg string, messageID string, images []core.ImageAttachment, files []core.FileAttachment) error {
+	return s.send(msg, messageID, images, files)
+}
+
+// TrySteer uses Pi's prompt command with streamingBehavior=steer. Unlike a
+// follow-up, it is consumed before the next model call in the active run.
+// prompt also starts a run if Pi became idle while the message was arriving.
+func (s *piSession) TrySteer(msg, messageID string, images []core.ImageAttachment, files []core.FileAttachment) (bool, error) {
+	if !s.rpc {
+		return false, nil
+	}
+	return true, s.send(msg, messageID, images, files)
+}
+
+func (s *piSession) send(msg string, messageID string, images []core.ImageAttachment, files []core.FileAttachment) error {
 	s.sendWg.Add(1)
 	defer s.sendWg.Done()
 
@@ -331,7 +345,10 @@ func (s *piSession) Send(msg string, messageID string, images []core.ImageAttach
 	if safeMessageID := sanitizePiAttachmentName(messageID); safeMessageID != "" {
 		attachDir = filepath.Join(attachDir, safeMessageID)
 	}
-	cleanAttachments(attachDir)
+	// A text-only steer must preserve attachments used by the active tools.
+	if len(images) > 0 || len(files) > 0 {
+		cleanAttachments(attachDir)
+	}
 
 	var atFiles []string
 	if len(images) > 0 {
@@ -467,8 +484,9 @@ func (s *piSession) writeRPCCommand(cmd map[string]any) error {
 // triggers EventResult.
 func (s *piSession) sendRPC(prompt string) error {
 	cmd := map[string]any{
-		"type":    "prompt",
-		"message": prompt,
+		"type":              "prompt",
+		"message":           prompt,
+		"streamingBehavior": "steer",
 	}
 	slog.Debug("piSession: sending RPC prompt", "bytes", len(prompt))
 	return s.writeRPCCommand(cmd)
