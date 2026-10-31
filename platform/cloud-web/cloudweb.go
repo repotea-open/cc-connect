@@ -671,7 +671,14 @@ func (p *Platform) ReconstructReplyCtx(sessionKey string) (any, error) {
 	}
 	replyCtx, ok := p.lookupReplyCtx(sessionKey)
 	if !ok {
-		return nil, fmt.Errorf("cloud_web: no stored reply context for session %q", sessionKey)
+		// Nothing has been received since startup (restart, or a quiet chat), so
+		// there is no stored context. Scheduled and proactive sends only need to
+		// reach the chat, and the gateway accepts the chat ID as reply_ctx.
+		chatID, parsed := chatIDFromSessionKey(p.name, sessionKey, p.shareInChannel)
+		if !parsed {
+			return nil, fmt.Errorf("cloud_web: no stored reply context for session %q", sessionKey)
+		}
+		replyCtx = chatID
 	}
 	return replyContext{SessionKey: sessionKey, ReplyCtx: replyCtx}, nil
 }

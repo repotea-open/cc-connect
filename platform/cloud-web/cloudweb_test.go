@@ -59,3 +59,29 @@ func TestDeriveBaseURL(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+func TestChatIDFromSessionKey(t *testing.T) {
+	tests := []struct {
+		name   string
+		key    string
+		shared bool
+		want   string
+		ok     bool
+	}{
+		{"per-user", "bot:123@chatroom:wxid_a", false, "123@chatroom", true},
+		{"private chat", "bot:wxid_a:wxid_a", false, "wxid_a", true},
+		{"shared", "bot:123@chatroom", true, "123@chatroom", true},
+		{"round trip", buildSessionKey("bot", "c1", "u1", false, ""), false, "c1", true},
+		{"other platform", "other:c1:u1", false, "", false},
+		{"missing user part", "bot:c1", false, "", false},
+		{"empty chat", "bot:", true, "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := chatIDFromSessionKey("bot", tt.key, tt.shared)
+			if got != tt.want || ok != tt.ok {
+				t.Fatalf("got (%q, %v), want (%q, %v)", got, ok, tt.want, tt.ok)
+			}
+		})
+	}
+}

@@ -277,6 +277,25 @@ func buildSessionKey(platformName, chatID, userID string, shareInChannel bool, p
 	return fmt.Sprintf("%s:%s:%s", platformName, chatID, userID)
 }
 
+// chatIDFromSessionKey is the inverse of buildSessionKey for keys it generated:
+// "<name>:<chat>" when the session is shared in the channel, otherwise
+// "<name>:<chat>:<user>".
+func chatIDFromSessionKey(platformName, sessionKey string, shareInChannel bool) (string, bool) {
+	rest, ok := strings.CutPrefix(sessionKey, platformName+":")
+	if !ok {
+		return "", false
+	}
+	if !shareInChannel {
+		i := strings.LastIndex(rest, ":")
+		if i < 0 {
+			return "", false
+		}
+		rest = rest[:i]
+	}
+	rest = strings.TrimSpace(rest)
+	return rest, rest != ""
+}
+
 func isGroupChat(chatType string) bool {
 	switch strings.ToLower(strings.TrimSpace(chatType)) {
 	case "group", "channel", "room":
