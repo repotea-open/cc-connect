@@ -1,8 +1,8 @@
-name: Release linux-amd64 (repotea)
+name: Release linux-amd64 (fork)
 
 on:
   push:
-    tags: ['v*-repotea.*']
+    tags: ['v*-fork.*']
   workflow_dispatch:
 
 permissions:
