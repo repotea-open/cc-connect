@@ -51,7 +51,6 @@ func TestCUJ_C5_SteerAndStopWithoutDeferredTurns(t *testing.T) {
 	p := &stubPlatformEngine{n: "test"}
 	s := &steeringTestSession{controllableAgentSession: newControllableSession("steering")}
 	e := NewEngine("test", &controllableAgent{nextSession: s}, []Platform{p}, t.TempDir()+"/sessions.json", LangEnglish)
-	e.AddAlias("别发了", "/stop")
 	send := func(content string) {
 		e.ReceiveMessage(p, &Message{SessionKey: "test:bob", Platform: "test", UserID: "bob", UserName: "bob", MessageID: content, Content: content, ReplyCtx: "ctx"})
 	}
@@ -87,7 +86,18 @@ func TestCUJ_C5_SteerAndStopWithoutDeferredTurns(t *testing.T) {
 			t.Fatalf("unexpected deferred queue reply: %q", text)
 		}
 	}
+	// Cancellation in ordinary language is interpreted by the agent, not
+	// intercepted by engine phrase matching or command aliases.
 	send("别发了")
+	s.mu.Lock()
+	if len(s.steers) != 3 || s.steers[2] != "别发了" {
+		t.Fatalf("cancellation text was not steered: %v", s.steers)
+	}
+	s.mu.Unlock()
+	if !s.Alive() {
+		t.Fatal("natural-language cancellation was intercepted as a command")
+	}
+	send("/stop")
 	select {
 	case <-s.closed:
 	case <-time.After(2 * time.Second):
@@ -104,7 +114,7 @@ func TestCUJ_C5_SteerAndStopWithoutDeferredTurns(t *testing.T) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if len(s.prompts) != 1 || len(s.steers) != 2 {
+	if len(s.prompts) != 1 || len(s.steers) != 3 {
 		t.Fatal("stop was sent to agent instead of interrupting it")
 	}
 }
