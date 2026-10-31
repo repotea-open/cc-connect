@@ -426,6 +426,14 @@ type AgentSession interface {
 	Close() error
 }
 
+// SteeringAgentSession can inject a message into the current run before its
+// next model call. Returning false means this mode cannot steer; the engine
+// may use its normal deferred queue. An attempted steering send must never
+// fall back to that queue on error, which could execute the message twice.
+type SteeringAgentSession interface {
+	TrySteer(prompt, messageID string, images []ImageAttachment, files []FileAttachment) (bool, error)
+}
+
 // PermissionResult represents the user's decision on a permission request.
 type PermissionResult struct {
 	Behavior     string         `json:"behavior"`               // "allow" or "deny"

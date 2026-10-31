@@ -532,6 +532,8 @@ type interactiveState struct {
 	stopped                  bool
 	pending                  *pendingPermission
 	pendingMessages          []queuedMessage // messages queued while session was busy
+	steerReady               bool            // foreground prompt has been written to the agent
+	steerMu                  sync.Mutex      // serializes steering without blocking /stop
 	approveAll               bool            // when true, auto-approve all permission requests for this session
 	fromVoice                bool            // true if current turn originated from voice transcription
 	sideText                 string
@@ -3042,6 +3044,9 @@ func (e *Engine) handleMessage(p Platform, msg *Message) {
 			e.reply(p, msg.ReplyCtx, e.i18n.T(MsgPreviousProcessing))
 			return
 		}
+		if e.steerBusySession(p, msg, interactiveKey, session, sessions) {
+			return
+		}
 		// Session is busy — try to queue the message for the running turn
 		// so the agent processes it immediately after the current turn ends.
 		if e.queueMessageForBusySession(p, msg, interactiveKey) {
@@ -3822,6 +3827,7 @@ func (e *Engine) processInteractiveMessageWith(p Platform, msg *Message, session
 
 	sendStart := time.Now()
 	state.mu.Lock()
+	state.steerReady = false
 	state.currentMessageID = msg.MessageID
 	state.fromVoice = msg.FromVoice
 	state.sideText = ""
@@ -3837,7 +3843,11 @@ func (e *Engine) processInteractiveMessageWith(p Platform, msg *Message, session
 			sendDone <- fmt.Errorf("agent session became nil")
 			return
 		}
-		sendDone <- as.Send(promptContent, msg.MessageID, msg.Images, msg.Files)
+		err := as.Send(promptContent, msg.MessageID, msg.Images, msg.Files)
+		if err == nil {
+			e.flushStartupSteering(state, session, sessions)
+		}
+		sendDone <- err
 	}()
 
 	e.processInteractiveEvents(state, session, sessions, interactiveKey, msg.MessageID, turnStart, stopTyping, sendDone, msg.ReplyCtx)
@@ -5532,6 +5542,9 @@ func (e *Engine) processInteractiveEvents(state *interactiveState, session *Sess
 				)
 				continue
 			}
+			state.mu.Lock()
+			state.steerReady = false
+			state.mu.Unlock()
 			cp.Finalize(ProgressCardStateCompleted)
 			// Use state.agentSession.CurrentSessionID() instead of event.SessionID.
 			// event.SessionID may be empty in some cases, causing the agent_session_id
@@ -5948,7 +5961,11 @@ func (e *Engine) processInteractiveEvents(state *interactiveState, session *Sess
 						nextSend <- fmt.Errorf("agent session became nil")
 						return
 					}
-					nextSend <- as.Send(queuedPrompt, queued.messageID, queued.images, queued.files)
+					err := as.Send(queuedPrompt, queued.messageID, queued.images, queued.files)
+					if err == nil {
+						e.flushStartupSteering(state, session, sessions)
+					}
+					nextSend <- err
 				}()
 				pendingSend = nextSend
 
@@ -6225,6 +6242,7 @@ func (e *Engine) drainPendingMessages(state *interactiveState, session *Session,
 	for {
 		state.mu.Lock()
 		if len(state.pendingMessages) == 0 {
+			state.steerReady = false
 			session.Unlock()
 			state.mu.Unlock()
 			return true
@@ -6276,7 +6294,11 @@ func (e *Engine) drainPendingMessages(state *interactiveState, session *Session,
 				sendDone <- fmt.Errorf("agent session became nil")
 				return
 			}
-			sendDone <- as.Send(prompt, queued.messageID, queued.images, queued.files)
+			err := as.Send(prompt, queued.messageID, queued.images, queued.files)
+			if err == nil {
+				e.flushStartupSteering(state, session, sessions)
+			}
+			sendDone <- err
 		}()
 
 		var stopTyping func()

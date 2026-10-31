@@ -1908,6 +1908,8 @@ app_secret = "your-feishu-app-secret"
 # [projects.agent.options]
 # work_dir = "/path/to/project"
 # rpc = true                  # enable RPC mode for UI forwarding / 启用 RPC 模式以转发 UI
+# With RPC, messages received during a run steer it before the next model call.
+# RPC 模式下，新消息在当前工具调用结束后介入；使用 /stop 强制停止并清空待处理消息。
 # mode = "default"            # "default" | "yolo"
 # thinking = "high"           # optional / 可选
 # # model = "anthropic/claude-sonnet-4-20250514"  # optional / 可选
